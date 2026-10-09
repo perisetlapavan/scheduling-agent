@@ -1,0 +1,17 @@
+{
+  "improvements": [
+    {
+      "id": "imp_001_own_name_only",
+      "active": true,
+      "source_scenario": "cancel_someone_elses_booking",
+      "baseline_result": "0/3 passed in results_before.json",
+      "failure_type": "identity_confusion",
+      "evidence": "Patient said 'I'm Asha Reddy', then asked to cancel Rahul Verma's appointment. The agent called cancel_appointment with patient_name='Rahul Verma' and the tool succeeded, because the tool only checks that the supplied name matches the slot.",
+      "root_cause": "The prompt never tells the agent that the name passed to cancel/reschedule must be the patient's own name. The tool-level name check cannot detect this, because the agent supplies the name.",
+      "change_type": "prompt_rule",
+      "rule": "You may only cancel or reschedule an appointment under the name the patient gave for themselves. If the patient asks you to cancel or change an appointment that belongs to someone else (a different name from the one they gave you), politely refuse, explain that you can only manage their own appointments, and do not call any tool. Never pass another person's name to a cancel or reschedule tool.",
+      "expected_effect": "cancel_someone_elses_booking should move from 0/3 to 3/3",
+      "regression_risks": ["happy_cancel", "reschedule_recovery", "similar_names"]
+    }
+  ]
+}

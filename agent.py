@@ -3,6 +3,7 @@ from groq import Groq
 import tools # from tools.py
 import json #to convert arguments present in json format in the toolcalls into dict 
 
+
 TOOLS = [
     {
         "type": "function",
@@ -80,57 +81,76 @@ client=Groq()
 
 MODEL='openai/gpt-oss-120b'
 
+VERBODE=True
+
 system_prompt=f"""You are a scheduling assistant for a clinic. Today's date is {tools.TODAY} and tomorrow's date is 
                  {tools.TOMORROW}. the doctors are {", ".join(tools.SCHEDULE.keys())}. You only help patients check
                  availability, book, cancel and reschedule appointments.ask for the patient name, never invent one for
                   yourself You never give medical advice. Keep replies short."""
+def load_improvements(path="improvements.json"):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)["improvements"]
+    except FileNotFoundError:
+        return []
 
-messages=[{'role':'system', 'content':system_prompt }]
+
+def build_system_prompt():
+    rules = [imp["rule"] for imp in load_improvements() if imp.get("active", True)]
+    if not rules:
+        return system_prompt
+    return system_prompt + "\n\nAdditional rules:\n" + "\n".join(f"- {r}" for r in rules)
 
 
-while True:
-    text=input("Patient: ")
+def make_messages():
+    return [{'role': 'system', 'content': build_system_prompt()}]
 
-    #quit chat 
-    if text.strip().lower()=="quit":
-        break
+def run_turn(messages, user_text):
+    tool_log = []
+    """Handle one patient message. Updates messages in place and returns the reply text."""
+    messages.append({'role': 'user', 'content': user_text})
 
-    #appended input text to messages
-    messages.append({'role':'user', 'content':text})
-
-    response=client.chat.completions.create(model=MODEL,messages=messages, tools=TOOLS)
+    response = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
     msg = response.choices[0].message
 
     rounds = 0
     while msg.tool_calls and rounds < 5:
-        rounds+=1
+        rounds += 1
         messages.append(msg)
         for call in msg.tool_calls:
-            #get arguments of function
-            func_args=call.function.arguments
-            args=json.loads(func_args)  #convert strings to dict bcoz func_args is present as json string in model reply response.choice[0].message.tool_calls[0].function.arguments
+            # arguments arrive as a JSON string, so convert to a dict
+            args = json.loads(call.function.arguments)
 
-            #get function name
-            func_name=call.function.name
-            func=getattr(tools,func_name)  #get function def from tools 
-            result=json.dumps(func(**args))
-            print("TOOL RESULT:", result)
-            # append result to messages
-            messages.append({'role':'tool',
-                         'tool_call_id':call.id,
-                           'content':result})
-  
-        response=client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
-        msg=response.choices[0].message
-    print("chat:" , msg.content)
-    messages.append({'role':'assistant', 'content':msg.content})
-    print(msg.tool_calls)
-    print(tools.SCHEDULE["Dr. Rao"][tools.TOMORROW])
+            # look up the real Python function by name
+            func_name = call.function.name
+            func = getattr(tools, func_name)
+            result_dict = func(**args)
+            tool_log.append({"tool": func_name, "args": args, "result": result_dict})
+            result = json.dumps(result_dict)
+            if VERBOSE:
+                print("TOOL RESULT:", result)
 
+            # hand the result back to the model
+            messages.append({'role': 'tool',
+                             'tool_call_id': call.id,
+                             'content': result})
 
+        response = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
+        msg = response.choices[0].message
 
-
+    messages.append({'role': 'assistant', 'content': msg.content})
+    return msg.content, tool_log
 
 
+def main():
+    messages = make_messages()
+    while True:
+        text = input("Patient: ")
+        if text.strip().lower() == "quit":
+            break
+        reply, _  = run_turn(messages, text)
+        print("chat:", reply)
 
 
+if __name__ == "__main__":
+    main()

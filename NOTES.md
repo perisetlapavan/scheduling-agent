@@ -13,3 +13,6 @@ TOOLS.py
 12. Reset function for reproducible evaluation.
 13. Dates computed at runtime
 14. "tool loop capped at 5 rounds to prevent runaway calls."
+15. The patient’s lines are fixed scripts. That makes runs repeatable, but if the agent asks something unexpected, the script can’t adapt.
+16. Slots for “today” may already be in the past by the time you run it. This was an earlier assumption of yours.
+17. “No real identity verification exists. A patient who lies about their name is out of scope.”
